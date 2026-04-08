@@ -1,28 +1,29 @@
 id: com.example.CosmicAppletSpotify
 runtime: org.freedesktop.Platform
-runtime-version: '23.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
 command: cosmic-applet-spotify
+# ADD THIS SECTION:
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    - RUSTUP_HOME: /run/build/cosmic-applet-spotify/.rustup
 finish-args:
   - --share=ipc
-  - --socket=wayland              # To render on the COSMIC desktop
-  - --socket=fallback-x11          # Compatibility backup
-  - --device=dri                  # Hardware acceleration
-  - --talk-name=org.mpris.MediaPlayer2.spotify # THE KEY: Allows reading Spotify data
-  - --filesystem=xdg-config/com.example.CosmicAppletSpotify:create # Permission to save your toggles
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.mpris.MediaPlayer2.spotify
+  - --filesystem=xdg-config/com.example.CosmicAppletSpotify:create
 modules:
   - name: cosmic-applet-spotify
     buildsystem: simple
     build-commands:
-      # Build the rust binary
       - cargo build --release
-      # Install binary to the Flatpak /app/bin
       - install -D target/release/cosmic-applet-spotify /app/bin/cosmic-applet-spotify
-      # Install the Desktop file
       - install -D com.example.CosmicAppletSpotify.desktop /app/share/applications/com.example.CosmicAppletSpotify.desktop
-      # Install the Icon
       - install -D spotify-applet.svg /app/share/icons/hicolor/scalable/apps/spotify-applet.svg
     sources:
       - type: dir
