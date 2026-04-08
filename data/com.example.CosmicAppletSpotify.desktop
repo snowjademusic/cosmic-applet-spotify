@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Spotify Now Playing
+Comment=Show the currently playing Spotify track in the COSMIC panel
+Exec=cosmic-applet-spotify
+Icon=spotify-symbolic
+Terminal=false
+Categories=AudioVideo;Audio;Player;Utility;Applet;
+Keywords=Spotify;MPRIS;Now Playing;COSMIC;Applet;
+X-CosmicApplet=true

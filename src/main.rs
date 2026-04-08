@@ -1,113 +1,126 @@
-use cosmic::{
-    app::{Core, Task},
-    applet,
-    iced::{
-        self,
-        widget::{column, container, image as iced_image, row, text},
-        window, Alignment, Length,
-    },
-    Element,
+use cosmic::app::{Core, Task};
+use cosmic::iced::{
+    self,
+    platform_specific::shell::commands::popup,
+    widget::{column, container, image as iced_image, row, text},
+    window, Alignment, Length,
 };
-use mpris::PlayerFinder;
+use cosmic::{applet, executor, Element};
+use mpris::{PlaybackStatus, PlayerFinder};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 const APP_ID: &str = "com.example.CosmicAppletSpotify";
-const POLL_INTERVAL_MS: u64 = 2000;
+const POLL_INTERVAL_SECONDS: u64 = 3;
 
-// ── State ────────────────────────────────────────────────────────────────────
-
+// ── We map PlaybackStatus to a String immediately so TrackInfo stays Clone ──
 #[derive(Clone, Debug)]
 struct TrackInfo {
     title: String,
-    artist: String,
+    artists: String,
     art_url: Option<String>,
+    status: String, // "Playing" | "Paused" | "Stopped"
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    TogglePopup,
+    PopupClosed(window::Id),
+    RefreshNowPlaying,
+    NowPlayingLoaded(Option<TrackInfo>),
+    AlbumArtFetched(Option<Arc<Vec<u8>>>, String),
 }
 
 struct SpotifyApplet {
     core: Core,
     popup: Option<window::Id>,
     track: Option<TrackInfo>,
-    album_art: Option<Arc<Vec<u8>>>, // raw image bytes for iced
-    art_url_loaded: Option<String>,   // track which URL is loaded
+    album_art: Option<Arc<Vec<u8>>>,
+    art_url_loaded: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-enum Message {
-    TogglePopup,
-    TrackChanged(Option<TrackInfo>),
-    AlbumArtFetched(Option<Arc<Vec<u8>>>, String), // bytes + url that was fetched
-    Tick,
-}
-
-// ── App impl ─────────────────────────────────────────────────────────────────
-
-impl cosmic::Application for SpotifyApplet {
-    type Message = Message;
-    type Executor = cosmic::executor::Default; // tokio under the hood
-    type Flags = ();
-    const APP_ID: &'static str = APP_ID;
-
-    fn init(core: Core, _flags: ()) -> (Self, Task<Message>) {
-        let applet = Self {
-            core,
+impl Default for SpotifyApplet {
+    fn default() -> Self {
+        Self {
+            core: Core::default(),
             popup: None,
             track: None,
             album_art: None,
             art_url_loaded: None,
-        };
-        // Kick off first poll immediately
-        (applet, Task::perform(poll_mpris(), Message::TrackChanged))
+        }
     }
+}
+
+impl cosmic::Application for SpotifyApplet {
+    type Executor = executor::Default;
+    type Flags = ();
+    type Message = Message;
+
+    const APP_ID: &'static str = APP_ID;
 
     fn core(&self) -> &Core { &self.core }
     fn core_mut(&mut self) -> &mut Core { &mut self.core }
 
-    fn update(&mut self, message: Message) -> Task<Message> {
+    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
+        (
+            Self { core, ..Default::default() },
+            Task::perform(fetch_now_playing(), |track| {
+                cosmic::Action::App(Message::NowPlayingLoaded(track))
+            }),
+        )
+    }
+
+    fn subscription(&self) -> iced::Subscription<Self::Message> {
+        iced::time::every(std::time::Duration::from_secs(POLL_INTERVAL_SECONDS))
+            .map(|_| Message::RefreshNowPlaying)
+    }
+
+    fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
         match message {
             Message::TogglePopup => {
-                if let Some(p) = self.popup.take() {
-                    return applet::commands::popup::destroy_popup(p);
+                if let Some(id) = self.popup.take() {
+                    return popup::destroy_popup(id);
                 }
                 let new_id = window::Id::unique();
                 self.popup = Some(new_id);
-                let settings = self.core.applet.get_popup_settings(
+                let popup_settings = self.core.applet.get_popup_settings(
                     self.core.main_window_id().unwrap(),
                     new_id,
-                    Some((360, 120)),
+                    Some((360, 160)),
                     None,
                     None,
                 );
-                applet::commands::popup::get_popup(settings)
+                popup::get_popup(popup_settings)
             }
 
-            Message::TrackChanged(info) => {
-                // Check if track changed → need new art
-                let art_url = info.as_ref().and_then(|t| t.art_url.clone());
-                let needs_fetch = art_url.is_some()
+            Message::PopupClosed(id) => {
+                if self.popup.as_ref() == Some(&id) {
+                    self.popup = None;
+                }
+                Task::none()
+            }
+
+            Message::RefreshNowPlaying => {
+                Task::perform(fetch_now_playing(), |track| {
+                    cosmic::Action::App(Message::NowPlayingLoaded(track))
+                })
+            }
+
+            Message::NowPlayingLoaded(track) => {
+                let art_url = track.as_ref().and_then(|t| t.art_url.clone());
+                let needs_art = art_url.is_some()
                     && art_url.as_deref() != self.art_url_loaded.as_deref();
-
-                self.track = info;
-
-                let fetch_task = if needs_fetch {
-                    let url = art_url.clone().unwrap();
+                self.track = track;
+                if needs_art {
+                    let url = art_url.unwrap();
                     Task::perform(fetch_album_art(url.clone()), move |bytes| {
-                        Message::AlbumArtFetched(bytes.map(Arc::new), url.clone())
+                        cosmic::Action::App(Message::AlbumArtFetched(
+                            bytes.map(Arc::new),
+                            url.clone(),
+                        ))
                     })
                 } else {
                     Task::none()
-                };
-
-                // Schedule next poll
-                let poll_task = Task::perform(
-                    async {
-                        tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS)).await;
-                        poll_mpris().await
-                    },
-                    Message::TrackChanged,
-                );
-
-                Task::batch([fetch_task, poll_task])
+                }
             }
 
             Message::AlbumArtFetched(bytes, url) => {
@@ -115,55 +128,40 @@ impl cosmic::Application for SpotifyApplet {
                 self.art_url_loaded = Some(url);
                 Task::none()
             }
-
-            Message::Tick => Task::perform(poll_mpris(), Message::TrackChanged),
         }
     }
 
-    // Panel button: show truncated track name + music icon
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         let label = match &self.track {
-            Some(t) => {
-                let display = if t.title.len() > 25 {
-                    format!("{}…", &t.title[..24])
-                } else {
-                    t.title.clone()
-                };
-                format!("♪ {}", display)
-            }
-            None => "♪".to_string(),
+            Some(t) => format!("♪ {}", shorten(&t.title, 24)),
+            None => String::from("♪ Spotify"),
         };
 
         self.core
             .applet
             .autosize_window(
                 container(
-                    self.core
-                        .applet
-                        .text_button(&label)
-                        .on_press(Message::TogglePopup),
+                    self.core.applet.text_button(text(label), Message::TogglePopup)
                 )
-                .padding([0, 8]),
-                None,
+                .padding([0, 10]),
             )
             .into()
     }
 
-    // Popup: album art + full track info
-    fn view_window(&self, _id: window::Id) -> Element<Message> {
-        let content: Element<Message> = match &self.track {
+    fn view_window(&self, _id: window::Id) -> Element<'_, Self::Message> {
+        let content: Element<'_, Message> = match &self.track {
             None => text("Nothing playing").into(),
             Some(track) => {
-                let art: Element<Message> = if let Some(bytes) = &self.album_art {
+                let art: Element<'_, Message> = if let Some(bytes) = &self.album_art {
                     let handle = iced_image::Handle::from_bytes(bytes.as_ref().clone());
                     iced_image::Image::new(handle)
-                        .width(Length::Fixed(64.0))
-                        .height(Length::Fixed(64.0))
+                        .width(Length::Fixed(72.0))
+                        .height(Length::Fixed(72.0))
                         .into()
                 } else {
-                    container(text("🎵"))
-                        .width(Length::Fixed(64.0))
-                        .height(Length::Fixed(64.0))
+                    container(text("♫"))
+                        .width(Length::Fixed(72.0))
+                        .height(Length::Fixed(72.0))
                         .center_x(Length::Fill)
                         .center_y(Length::Fill)
                         .into()
@@ -172,8 +170,9 @@ impl cosmic::Application for SpotifyApplet {
                 row![
                     art,
                     column![
-                        text(&track.title).size(14),
-                        text(&track.artist).size(12),
+                        text(&track.title).size(15),
+                        text(&track.artists).size(12),
+                        text(&track.status).size(11),
                     ]
                     .spacing(4)
                     .align_x(Alignment::Start),
@@ -186,35 +185,54 @@ impl cosmic::Application for SpotifyApplet {
 
         self.core.applet.popup_container(content).into()
     }
+
+    fn on_close_requested(&self, id: window::Id) -> Option<Self::Message> {
+        Some(Message::PopupClosed(id))
+    }
+
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
+        Some(applet::style())
+    }
 }
 
-// ── MPRIS polling (runs in tokio via spawn_blocking) ─────────────────────────
+fn shorten(s: &str, max_chars: usize) -> String {
+    let mut chars = s.chars();
+    let shortened: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{shortened}…")
+    } else {
+        shortened
+    }
+}
 
-async fn poll_mpris() -> Option<TrackInfo> {
+async fn fetch_now_playing() -> Option<TrackInfo> {
     tokio::task::spawn_blocking(|| {
         let finder = PlayerFinder::new().ok()?;
-
-        // Find Spotify specifically; fall back to any active player
         let player = finder
-            .find_by_name("Spotify")
-            .or_else(|_| finder.find_active())
+            .find_by_name("spotify")
+            .or_else(|_| finder.find_by_name("Spotify"))
             .ok()?;
 
-        let meta = player.get_metadata().ok()?;
         let status = player.get_playback_status().ok()?;
-
-        if status != mpris::PlaybackStatus::Playing {
-            return None; // only show when actually playing
+        if matches!(status, PlaybackStatus::Stopped) {
+            return None;
         }
 
-        let meta = player.get_metadata().ok()?;
+        let status_str = match status {
+            PlaybackStatus::Playing => "Playing",
+            PlaybackStatus::Paused  => "Paused",
+            PlaybackStatus::Stopped => "Stopped",
+        }.to_string();
+
+        let metadata = player.get_metadata().ok()?;
         Some(TrackInfo {
-            title: meta.title().unwrap_or("Unknown").to_string(),
-            artist: meta
+            title: metadata.title().unwrap_or("Unknown title").to_string(),
+            artists: metadata
                 .artists()
-                .and_then(|v| v.first().map(|s| s.to_string()))
-                .unwrap_or_else(|| "Unknown".to_string()),
-            art_url: meta.art_url().map(str::to_string),
+                .map(|v| v.join(", "))
+                .unwrap_or_else(|| "Unknown artist".to_string()),
+            art_url: metadata.art_url().map(str::to_string),
+            status: status_str,
         })
     })
     .await
@@ -222,16 +240,11 @@ async fn poll_mpris() -> Option<TrackInfo> {
     .flatten()
 }
 
-// ── Album art fetch ──────────────────────────────────────────────────────────
-
 async fn fetch_album_art(url: String) -> Option<Vec<u8>> {
-    // Spotify's art_url is an https:// URL to their CDN
     let response = reqwest::get(&url).await.ok()?;
     let bytes = response.bytes().await.ok()?;
     Some(bytes.to_vec())
 }
-
-// ── Entry point ──────────────────────────────────────────────────────────────
 
 fn main() -> cosmic::iced::Result {
     applet::run::<SpotifyApplet>(())
