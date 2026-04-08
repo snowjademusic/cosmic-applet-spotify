@@ -8,3 +8,4 @@ Terminal=false
 Categories=AudioVideo;Audio;Player;Utility;Applet;
 Keywords=Spotify;MPRIS;Now Playing;COSMIC;Applet;
 X-CosmicApplet=true
+NoDisplay=true
