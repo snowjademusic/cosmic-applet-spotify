@@ -1,2 +1,4 @@
-/target
-.flatpak-builder
+/vendor
+/.flatpak-builder
+/build-dir
+target/
