@@ -2,23 +2,42 @@ use cosmic::app::{Core, Task};
 use cosmic::iced::{
     self,
     platform_specific::shell::commands::popup,
-    widget::{column, container, image as iced_image, row, text},
+    widget::{container, image as iced_image, row, text},
     window, Alignment, Length,
 };
 use cosmic::{applet, executor, Element};
+use cosmic::widget::{list_column, settings, toggler};
 use mpris::{PlaybackStatus, PlayerFinder};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 const APP_ID: &str = "com.example.CosmicAppletSpotify";
 const POLL_INTERVAL_SECONDS: u64 = 3;
+const PREFS_FILE_NAME: &str = "panel-visibility.conf";
 
-// ── We map PlaybackStatus to a String immediately so TrackInfo stays Clone ──
+#[derive(Clone, Copy, Debug)]
+struct PanelVisibility {
+    show_title: bool,
+    show_artists: bool,
+    show_artwork: bool,
+}
+
+impl Default for PanelVisibility {
+    fn default() -> Self {
+        Self {
+            show_title: true,
+            show_artists: true,
+            show_artwork: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct TrackInfo {
     title: String,
     artists: String,
     art_url: Option<String>,
-    status: String, // "Playing" | "Paused" | "Stopped"
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +47,9 @@ enum Message {
     RefreshNowPlaying,
     NowPlayingLoaded(Option<TrackInfo>),
     AlbumArtFetched(Option<Arc<Vec<u8>>>, String),
+    ToggleShowTitle(bool),
+    ToggleShowArtists(bool),
+    ToggleShowArtwork(bool),
 }
 
 struct SpotifyApplet {
@@ -36,17 +58,38 @@ struct SpotifyApplet {
     track: Option<TrackInfo>,
     album_art: Option<Arc<Vec<u8>>>,
     art_url_loaded: Option<String>,
+    show_title: bool,
+    show_artists: bool,
+    show_artwork: bool,
 }
 
 impl Default for SpotifyApplet {
     fn default() -> Self {
+        let visibility = load_panel_visibility().unwrap_or_default();
         Self {
             core: Core::default(),
             popup: None,
             track: None,
             album_art: None,
             art_url_loaded: None,
+            show_title: visibility.show_title,
+            show_artists: visibility.show_artists,
+            show_artwork: visibility.show_artwork,
         }
+    }
+}
+
+impl SpotifyApplet {
+    fn panel_visibility(&self) -> PanelVisibility {
+        PanelVisibility {
+            show_title: self.show_title,
+            show_artists: self.show_artists,
+            show_artwork: self.show_artwork,
+        }
+    }
+
+    fn persist_panel_visibility(&self) {
+        let _ = save_panel_visibility(self.panel_visibility());
     }
 }
 
@@ -128,20 +171,89 @@ impl cosmic::Application for SpotifyApplet {
                 self.art_url_loaded = Some(url);
                 Task::none()
             }
+
+            Message::ToggleShowTitle(value) => {
+                self.show_title = value;
+                self.persist_panel_visibility();
+                Task::none()
+            }
+
+            Message::ToggleShowArtists(value) => {
+                self.show_artists = value;
+                self.persist_panel_visibility();
+                Task::none()
+            }
+
+            Message::ToggleShowArtwork(value) => {
+                self.show_artwork = value;
+                self.persist_panel_visibility();
+                Task::none()
+            }
         }
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        let label = match &self.track {
-            Some(t) => format!("♪ {}", shorten(&t.title, 24)),
-            None => String::from("♪ Spotify"),
+        let icon_size = self.core.applet.suggested_size(false).0 as f32;
+
+        let art: Option<Element<'_, Message>> = if self.show_artwork {
+            Some(if let Some(bytes) = &self.album_art {
+                let handle = iced_image::Handle::from_bytes(bytes.as_ref().clone());
+                iced_image::Image::new(handle)
+                    .width(Length::Fixed(icon_size))
+                    .height(Length::Fixed(icon_size))
+                    .into()
+            } else {
+                container(text("♫"))
+                    .width(Length::Fixed(icon_size))
+                    .height(Length::Fixed(icon_size))
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .into()
+            })
+        } else {
+            None
         };
+
+        let title_part = if self.show_title {
+            self.track
+                .as_ref()
+                .map(|t| shorten(&t.title, 24))
+                .unwrap_or_else(|| String::from("Spotify"))
+        } else {
+            String::new()
+        };
+
+        let artist_part = if self.show_artists {
+            self.track
+                .as_ref()
+                .map(|t| shorten(&t.artists, 24))
+                .unwrap_or_else(|| String::from("No artist"))
+        } else {
+            String::new()
+        };
+
+        let label = match (self.show_title, self.show_artists) {
+            (true, true) => format!("{} • {}", title_part, artist_part),
+            (true, false) => title_part,
+            (false, true) => artist_part,
+            (false, false) => String::from("Spotify"),
+        };
+
+        let mut panel_row = row![]
+            .spacing(8)
+            .align_y(Alignment::Center);
+        if let Some(art) = art {
+            panel_row = panel_row.push(art);
+        }
+        panel_row = panel_row.push(text(label));
 
         self.core
             .applet
             .autosize_window(
                 container(
-                    self.core.applet.text_button(text(label), Message::TogglePopup)
+                    cosmic::widget::button::custom(panel_row)
+                        .on_press_down(Message::TogglePopup)
+                        .class(cosmic::theme::Button::AppletIcon)
                 )
                 .padding([0, 10]),
             )
@@ -149,39 +261,21 @@ impl cosmic::Application for SpotifyApplet {
     }
 
     fn view_window(&self, _id: window::Id) -> Element<'_, Self::Message> {
-        let content: Element<'_, Message> = match &self.track {
-            None => text("Nothing playing").into(),
-            Some(track) => {
-                let art: Element<'_, Message> = if let Some(bytes) = &self.album_art {
-                    let handle = iced_image::Handle::from_bytes(bytes.as_ref().clone());
-                    iced_image::Image::new(handle)
-                        .width(Length::Fixed(72.0))
-                        .height(Length::Fixed(72.0))
-                        .into()
-                } else {
-                    container(text("♫"))
-                        .width(Length::Fixed(72.0))
-                        .height(Length::Fixed(72.0))
-                        .center_x(Length::Fill)
-                        .center_y(Length::Fill)
-                        .into()
-                };
-
-                row![
-                    art,
-                    column![
-                        text(&track.title).size(15),
-                        text(&track.artists).size(12),
-                        text(&track.status).size(11),
-                    ]
-                    .spacing(4)
-                    .align_x(Alignment::Start),
-                ]
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .into()
-            }
-        };
+        let content = list_column()
+            .padding(8)
+            .spacing(0)
+            .add(settings::item(
+                "Show song title",
+                toggler(self.show_title).on_toggle(Message::ToggleShowTitle),
+            ))
+            .add(settings::item(
+                "Show artists",
+                toggler(self.show_artists).on_toggle(Message::ToggleShowArtists),
+            ))
+            .add(settings::item(
+                "Show artwork",
+                toggler(self.show_artwork).on_toggle(Message::ToggleShowArtwork),
+            ));
 
         self.core.applet.popup_container(content).into()
     }
@@ -218,12 +312,6 @@ async fn fetch_now_playing() -> Option<TrackInfo> {
             return None;
         }
 
-        let status_str = match status {
-            PlaybackStatus::Playing => "Playing",
-            PlaybackStatus::Paused  => "Paused",
-            PlaybackStatus::Stopped => "Stopped",
-        }.to_string();
-
         let metadata = player.get_metadata().ok()?;
         Some(TrackInfo {
             title: metadata.title().unwrap_or("Unknown title").to_string(),
@@ -232,7 +320,6 @@ async fn fetch_now_playing() -> Option<TrackInfo> {
                 .map(|v| v.join(", "))
                 .unwrap_or_else(|| "Unknown artist".to_string()),
             art_url: metadata.art_url().map(str::to_string),
-            status: status_str,
         })
     })
     .await
@@ -244,6 +331,64 @@ async fn fetch_album_art(url: String) -> Option<Vec<u8>> {
     let response = reqwest::get(&url).await.ok()?;
     let bytes = response.bytes().await.ok()?;
     Some(bytes.to_vec())
+}
+
+fn config_file_path() -> Option<PathBuf> {
+    let base_dir = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".config"))
+        })?;
+
+    Some(base_dir.join(APP_ID).join(PREFS_FILE_NAME))
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn load_panel_visibility() -> Option<PanelVisibility> {
+    let path = config_file_path()?;
+    let content = fs::read_to_string(path).ok()?;
+
+    let mut visibility = PanelVisibility::default();
+    for line in content.lines() {
+        let mut parts = line.splitn(2, '=');
+        let key = parts.next()?.trim();
+        let value = parts.next()?.trim();
+        let parsed = parse_bool(value)?;
+
+        match key {
+            "show_title" => visibility.show_title = parsed,
+            "show_artists" => visibility.show_artists = parsed,
+            "show_artwork" => visibility.show_artwork = parsed,
+            _ => {}
+        }
+    }
+
+    Some(visibility)
+}
+
+fn save_panel_visibility(visibility: PanelVisibility) -> Option<()> {
+    let path = config_file_path()?;
+    let dir = path.parent()?;
+    fs::create_dir_all(dir).ok()?;
+
+    let content = format!(
+        "show_title={}\nshow_artists={}\nshow_artwork={}\n",
+        visibility.show_title,
+        visibility.show_artists,
+        visibility.show_artwork
+    );
+
+    fs::write(path, content).ok()?;
+    Some(())
 }
 
 fn main() -> cosmic::iced::Result {
