@@ -14,9 +14,14 @@ finish-args:
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
+  - --socket=network
   - --device=dri
   - --talk-name=org.mpris.MediaPlayer2.spotify
   - --filesystem=xdg-config/io.github.snowjademusic.CosmicAppletSpotify:create
+  - --filesystem=xdg-config/cosmic:ro
+  - --filesystem=xdg-data/cosmic:ro
+  - --filesystem=xdg-data/icons:ro
+  - --filesystem=xdg-data/fonts:ro
 modules:
   - name: cosmic-applet-spotify
     buildsystem: simple
