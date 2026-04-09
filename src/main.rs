@@ -151,7 +151,8 @@ impl cosmic::Application for SpotifyApplet {
             Message::NowPlayingLoaded(track) => {
                 let art_url = track.as_ref().and_then(|t| t.art_url.clone());
                 let needs_art = art_url.is_some()
-                    && art_url.as_deref() != self.art_url_loaded.as_deref();
+                    && (art_url.as_deref() != self.art_url_loaded.as_deref()
+                        || self.album_art.is_none());
                 self.track = track;
                 if needs_art {
                     let url = art_url.unwrap();
