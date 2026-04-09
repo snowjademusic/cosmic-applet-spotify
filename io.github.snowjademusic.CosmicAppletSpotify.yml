@@ -12,9 +12,9 @@ build-options:
     - CARGO_HOME: /run/build/cosmic-applet-spotify/cargo-home
 finish-args:
   - --share=ipc
+  - --share=network
   - --socket=wayland
   - --socket=fallback-x11
-  - --socket=network
   - --device=dri
   - --talk-name=org.mpris.MediaPlayer2.spotify
   - --filesystem=xdg-config/io.github.snowjademusic.CosmicAppletSpotify:create
