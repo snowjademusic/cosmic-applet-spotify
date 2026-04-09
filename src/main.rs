@@ -12,7 +12,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-const APP_ID: &str = "com.example.CosmicAppletSpotify";
+const APP_ID: &str = "io.github.snowjademusic.CosmicAppletSpotify";
 const POLL_INTERVAL_SECONDS: u64 = 3;
 const PREFS_FILE_NAME: &str = "panel-visibility.conf";
 

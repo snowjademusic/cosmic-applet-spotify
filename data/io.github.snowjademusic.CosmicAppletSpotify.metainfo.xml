@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.snowjademusic.CosmicAppletSpotify</id>
+  <name>Spotify Now Playing</name>
+  <summary>Show the currently playing Spotify track in the COSMIC panel</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.snowjademusic">
+    <name>snowjademusic</name>
+  </developer>
+  <url type="homepage">https://github.com/snowjademusic/cosmic-applet-spotify</url>
+  <description>
+    <p>
+      Displays the currently playing Spotify track, artist, and album artwork in the COSMIC panel.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.snowjademusic.CosmicAppletSpotify.desktop</launchable>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Utility</category>
+  </categories>
+  <content_rating type="oars-1.1" />
+</component>

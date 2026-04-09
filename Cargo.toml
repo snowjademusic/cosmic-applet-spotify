@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libcosmic = { git = "https://github.com/pop-os/libcosmic", branch = "master", features = ["applet", "tokio"] }
+libcosmic = { git = "https://github.com/pop-os/libcosmic", features = ["applet", "tokio"] }
 mpris = "2"
 reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
 tokio = { version = "1", features = ["full"] }
+
