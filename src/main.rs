@@ -210,48 +210,51 @@ impl cosmic::Application for SpotifyApplet {
     fn view(&self) -> Element<'_, Self::Message> {
         let icon_size = self.core.applet.suggested_size(false).0 as f32;
 
-        let art: Option<Element<'_, Message>> = if self.show_artwork {
-            Some(if let Some(bytes) = &self.album_art {
+        let raw_title = self
+            .track
+            .as_ref()
+            .map(|t| t.title.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| shorten(s, 24));
+        let raw_artist = self
+            .track
+            .as_ref()
+            .map(|t| t.artists.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| shorten(s, 24));
+
+        let title_part = if self.show_title { raw_title } else { None };
+        let artist_part = if self.show_artists { raw_artist } else { None };
+
+        let label = match (title_part, artist_part) {
+            (Some(title), Some(artist)) => format!("{} • {}", title, artist),
+            (Some(title), None) => title,
+            (None, Some(artist)) => artist,
+            (None, None) => String::new(),
+        };
+
+        let has_known_art = self.show_artwork && self.album_art.is_some();
+        let show_music_note_fallback = !has_known_art && label.is_empty();
+
+        let art: Option<Element<'_, Message>> = if has_known_art {
+            self.album_art.as_ref().map(|bytes| {
                 let handle = iced_image::Handle::from_bytes(bytes.as_ref().clone());
                 iced_image::Image::new(handle)
                     .width(Length::Fixed(icon_size))
                     .height(Length::Fixed(icon_size))
                     .into()
-            } else {
+            })
+        } else if show_music_note_fallback {
+            Some(
                 container(text("♫"))
                     .width(Length::Fixed(icon_size))
                     .height(Length::Fixed(icon_size))
                     .center_x(Length::Fill)
                     .center_y(Length::Fill)
-                    .into()
-            })
+                    .into(),
+            )
         } else {
             None
-        };
-
-        let title_part = if self.show_title {
-            self.track
-                .as_ref()
-                .map(|t| shorten(&t.title, 24))
-                .unwrap_or_else(|| String::from(""))
-        } else {
-            String::new()
-        };
-
-        let artist_part = if self.show_artists {
-            self.track
-                .as_ref()
-                .map(|t| shorten(&t.artists, 24))
-                .unwrap_or_else(|| String::from(""))
-        } else {
-            String::new()
-        };
-
-        let label = match (self.show_title, self.show_artists) {
-            (true, true) => format!("{} • {}", title_part, artist_part),
-            (true, false) => title_part,
-            (false, true) => artist_part,
-            (false, false) => String::from(""),
         };
 
         let mut panel_row = row![].spacing(8).align_y(Alignment::Center);
@@ -370,10 +373,7 @@ fn track_from_player(player: &Player) -> Option<(PlaybackStatus, TrackInfo)> {
     }
 
     let metadata = player.get_metadata().ok()?;
-    let title = metadata.title()?.trim();
-    if title.is_empty() {
-        return None;
-    }
+    let title = metadata.title().map(str::trim).unwrap_or("");
 
     let artists = metadata
         .artists()
