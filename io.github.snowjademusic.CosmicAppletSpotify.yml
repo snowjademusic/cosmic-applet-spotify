@@ -16,7 +16,7 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  - --talk-name=org.mpris.MediaPlayer2.spotify
+  - --talk-name=org.mpris.MediaPlayer2.*
   - --filesystem=xdg-config/io.github.snowjademusic.CosmicAppletSpotify:create
   - --filesystem=xdg-config/cosmic:ro
   - --filesystem=xdg-data/cosmic:ro

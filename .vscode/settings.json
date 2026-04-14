@@ -1,0 +1,13 @@
+{
+  "rust-analyzer.files.excludeDir": [
+    "vendor",
+    "target",
+    ".flatpak-builder",
+    "build-dir"
+  ],
+  "rust-analyzer.check.command": "clippy",
+  "[rust]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  }
+}

@@ -864,6 +864,7 @@ dependencies = [
  "libcosmic",
  "mpris",
  "reqwest",
+ "serde_json",
  "tokio",
 ]
 
@@ -5043,7 +5044,6 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",

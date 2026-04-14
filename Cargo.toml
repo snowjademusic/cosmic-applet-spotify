@@ -10,6 +10,7 @@ homepage = "https://github.com/snowjademusic/cosmic-applet-spotify"
 [dependencies]
 libcosmic = { git = "https://github.com/pop-os/libcosmic", features = ["applet", "tokio"] }
 mpris = "2"
-reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
-tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 

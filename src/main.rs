@@ -5,9 +5,9 @@ use cosmic::iced::{
     widget::{container, image as iced_image, row, text},
     window, Alignment, Length,
 };
-use cosmic::{applet, executor, Element};
 use cosmic::widget::{list_column, settings, toggler};
-use mpris::{PlaybackStatus, PlayerFinder};
+use cosmic::{applet, executor, Element};
+use mpris::{PlaybackStatus, Player, PlayerFinder};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -38,6 +38,7 @@ struct TrackInfo {
     title: String,
     artists: String,
     art_url: Option<String>,
+    media_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -100,12 +101,19 @@ impl cosmic::Application for SpotifyApplet {
 
     const APP_ID: &'static str = APP_ID;
 
-    fn core(&self) -> &Core { &self.core }
-    fn core_mut(&mut self) -> &mut Core { &mut self.core }
+    fn core(&self) -> &Core {
+        &self.core
+    }
+    fn core_mut(&mut self) -> &mut Core {
+        &mut self.core
+    }
 
     fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
         (
-            Self { core, ..Default::default() },
+            Self {
+                core,
+                ..Default::default()
+            },
             Task::perform(fetch_now_playing(), |track| {
                 cosmic::Action::App(Message::NowPlayingLoaded(track))
             }),
@@ -142,24 +150,30 @@ impl cosmic::Application for SpotifyApplet {
                 Task::none()
             }
 
-            Message::RefreshNowPlaying => {
-                Task::perform(fetch_now_playing(), |track| {
-                    cosmic::Action::App(Message::NowPlayingLoaded(track))
-                })
-            }
+            Message::RefreshNowPlaying => Task::perform(fetch_now_playing(), |track| {
+                cosmic::Action::App(Message::NowPlayingLoaded(track))
+            }),
 
             Message::NowPlayingLoaded(track) => {
-                let art_url = track.as_ref().and_then(|t| t.art_url.clone());
-                let needs_art = art_url.is_some()
-                    && (art_url.as_deref() != self.art_url_loaded.as_deref()
+                let art_key = track.as_ref().and_then(art_cache_key);
+                let needs_art = art_key.is_some()
+                    && (art_key.as_deref() != self.art_url_loaded.as_deref()
                         || self.album_art.is_none());
                 self.track = track;
+
+                if art_key.is_none() {
+                    self.album_art = None;
+                    self.art_url_loaded = None;
+                    return Task::none();
+                }
+
                 if needs_art {
-                    let url = art_url.unwrap();
-                    Task::perform(fetch_album_art(url.clone()), move |bytes| {
+                    let key = art_key.unwrap();
+                    let track = self.track.clone().unwrap();
+                    Task::perform(fetch_album_art_for_track(track), move |bytes| {
                         cosmic::Action::App(Message::AlbumArtFetched(
                             bytes.map(Arc::new),
-                            url.clone(),
+                            key.clone(),
                         ))
                     })
                 } else {
@@ -219,7 +233,7 @@ impl cosmic::Application for SpotifyApplet {
             self.track
                 .as_ref()
                 .map(|t| shorten(&t.title, 24))
-                .unwrap_or_else(|| String::from("Spotify"))
+                .unwrap_or_else(|| String::from(""))
         } else {
             String::new()
         };
@@ -228,7 +242,7 @@ impl cosmic::Application for SpotifyApplet {
             self.track
                 .as_ref()
                 .map(|t| shorten(&t.artists, 24))
-                .unwrap_or_else(|| String::from("No artist"))
+                .unwrap_or_else(|| String::from(""))
         } else {
             String::new()
         };
@@ -237,12 +251,10 @@ impl cosmic::Application for SpotifyApplet {
             (true, true) => format!("{} • {}", title_part, artist_part),
             (true, false) => title_part,
             (false, true) => artist_part,
-            (false, false) => String::from("Spotify"),
+            (false, false) => String::from(""),
         };
 
-        let mut panel_row = row![]
-            .spacing(8)
-            .align_y(Alignment::Center);
+        let mut panel_row = row![].spacing(8).align_y(Alignment::Center);
         if let Some(art) = art {
             panel_row = panel_row.push(art);
         }
@@ -254,7 +266,7 @@ impl cosmic::Application for SpotifyApplet {
                 container(
                     cosmic::widget::button::custom(panel_row)
                         .on_press_down(Message::TogglePopup)
-                        .class(cosmic::theme::Button::AppletIcon)
+                        .class(cosmic::theme::Button::AppletIcon),
                 )
                 .padding([0, 10]),
             )
@@ -303,29 +315,129 @@ fn shorten(s: &str, max_chars: usize) -> String {
 async fn fetch_now_playing() -> Option<TrackInfo> {
     tokio::task::spawn_blocking(|| {
         let finder = PlayerFinder::new().ok()?;
-        let player = finder
-            .find_by_name("spotify")
-            .or_else(|_| finder.find_by_name("Spotify"))
-            .ok()?;
+        let mut paused_fallback: Option<TrackInfo> = None;
 
-        let status = player.get_playback_status().ok()?;
-        if matches!(status, PlaybackStatus::Stopped) {
-            return None;
+        // Try common players first, then fall back to all players.
+        let players = [
+            vec!["Spotify", "spotify"],
+            vec!["SoundCloud", "soundcloud"],
+            vec!["YouTube", "youtube", "YTMusic"],
+            vec!["VLC", "vlc", "org.videolan.VLC"],
+            vec!["mpd", "MPD"],
+        ];
+
+        // Prefer actively playing sessions over paused sessions.
+        for names in &players {
+            for name in names {
+                if let Ok(player) = finder.find_by_name(name) {
+                    if let Some((status, track)) = track_from_player(&player) {
+                        if matches!(status, PlaybackStatus::Playing) {
+                            return Some(track);
+                        }
+                        if paused_fallback.is_none() {
+                            paused_fallback = Some(track);
+                        }
+                    }
+                }
+            }
         }
 
-        let metadata = player.get_metadata().ok()?;
-        Some(TrackInfo {
-            title: metadata.title().unwrap_or("Unknown title").to_string(),
-            artists: metadata
-                .artists()
-                .map(|v| v.join(", "))
-                .unwrap_or_else(|| "Unknown artist".to_string()),
-            art_url: metadata.art_url().map(str::to_string),
-        })
+        // If none of the common names matched, scan all available MPRIS players.
+        if let Ok(players) = finder.find_all() {
+            for player in players {
+                if let Some((status, track)) = track_from_player(&player) {
+                    if matches!(status, PlaybackStatus::Playing) {
+                        return Some(track);
+                    }
+                    if paused_fallback.is_none() {
+                        paused_fallback = Some(track);
+                    }
+                }
+            }
+        }
+
+        paused_fallback
     })
     .await
     .ok()
     .flatten()
+}
+
+fn track_from_player(player: &Player) -> Option<(PlaybackStatus, TrackInfo)> {
+    let status = player.get_playback_status().ok()?;
+    if matches!(status, PlaybackStatus::Stopped) {
+        return None;
+    }
+
+    let metadata = player.get_metadata().ok()?;
+    let title = metadata.title()?.trim();
+    if title.is_empty() {
+        return None;
+    }
+
+    let artists = metadata
+        .artists()
+        .map(|v| v.join(", "))
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "".to_string());
+
+    Some((
+        status,
+        TrackInfo {
+            title: title.to_string(),
+            artists,
+            art_url: metadata.art_url().map(str::to_string),
+            media_url: metadata.url().map(str::to_string),
+        },
+    ))
+}
+
+fn art_cache_key(track: &TrackInfo) -> Option<String> {
+    track
+        .art_url
+        .as_ref()
+        .map(|url| format!("art:{url}"))
+        .or_else(|| track.media_url.as_ref().map(|url| format!("media:{url}")))
+}
+
+async fn fetch_album_art_for_track(track: TrackInfo) -> Option<Vec<u8>> {
+    let url = match track.art_url {
+        Some(url) => Some(url),
+        None => {
+            let media_url = track.media_url?;
+            resolve_thumbnail_url_from_media_url(&media_url).await
+        }
+    }?;
+
+    fetch_album_art(url).await
+}
+
+async fn resolve_thumbnail_url_from_media_url(media_url: &str) -> Option<String> {
+    let parsed = reqwest::Url::parse(media_url).ok()?;
+    let host = parsed.host_str()?.to_ascii_lowercase();
+
+    if host.contains("youtube.com") || host.contains("youtu.be") {
+        return fetch_oembed_thumbnail("https://www.youtube.com/oembed", media_url).await;
+    }
+
+    if host.contains("soundcloud.com") || host.contains("snd.sc") {
+        return fetch_oembed_thumbnail("https://soundcloud.com/oembed", media_url).await;
+    }
+
+    None
+}
+
+async fn fetch_oembed_thumbnail(endpoint: &str, media_url: &str) -> Option<String> {
+    let url = reqwest::Url::parse_with_params(endpoint, &[("url", media_url), ("format", "json")])
+        .ok()?;
+
+    let response = reqwest::get(url).await.ok()?;
+    let payload: serde_json::Value = response.json().await.ok()?;
+
+    payload
+        .get("thumbnail_url")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
 }
 
 async fn fetch_album_art(url: String) -> Option<Vec<u8>> {
@@ -383,9 +495,7 @@ fn save_panel_visibility(visibility: PanelVisibility) -> Option<()> {
 
     let content = format!(
         "show_title={}\nshow_artists={}\nshow_artwork={}\n",
-        visibility.show_title,
-        visibility.show_artists,
-        visibility.show_artwork
+        visibility.show_title, visibility.show_artists, visibility.show_artwork
     );
 
     fs::write(path, content).ok()?;

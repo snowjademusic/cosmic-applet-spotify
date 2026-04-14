@@ -10,6 +10,20 @@ Download the `.flatpak` asset from the latest GitHub release and install it:
 flatpak install --user --bundle io.github.snowjademusic.CosmicAppletSpotify.flatpak
 ```
 
+## Releases
+
+This repository uses Conventional Commits together with release-plz.
+
+Use commit messages like `feat: add shuffle indicator`, `feat(ui): add shuffle indicator`, or `fix: handle missing player`.
+On every push to `main`, release-plz opens or updates a release pull request that:
+
+- bumps the crate version in `Cargo.toml`
+- updates `CHANGELOG.md`
+
+Merge that release PR to land the new version and changelog in `main`.
+
+If you later want GitHub Releases or crates.io publishing, add a release job on top of this workflow.
+
 ## Screenshots
 
 
