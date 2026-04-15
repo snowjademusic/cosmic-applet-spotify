@@ -26,6 +26,12 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Disable vendored Cargo source for release-plz
+        run: |
+          if [ -f .cargo/config.toml ]; then
+            mv .cargo/config.toml .cargo/config.toml.release-plz-disabled
+          fi
+
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
