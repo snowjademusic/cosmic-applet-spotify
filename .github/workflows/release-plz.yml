@@ -26,13 +26,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Prepare vendored dependencies for release-plz
-        run: cargo vendor --locked vendor > /dev/null
-
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
           command: release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_SOURCE_VENDORED_SOURCES_DIRECTORY: ${{ github.workspace }}/vendor
