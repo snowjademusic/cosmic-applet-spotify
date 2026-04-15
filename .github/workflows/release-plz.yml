@@ -35,3 +35,4 @@ jobs:
           command: release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_SOURCE_VENDORED_SOURCES_DIRECTORY: ${{ github.workspace }}/vendor
