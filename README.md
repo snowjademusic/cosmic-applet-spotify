@@ -22,7 +22,14 @@ On every push to `master`, release-plz opens or updates a release pull request t
 
 Merge that release PR to land the new version and changelog in `master`.
 
-If you later want GitHub Releases or crates.io publishing, add a release job on top of this workflow.
+After that merge, release-plz automatically:
+
+- creates the Git tag
+- creates the GitHub Release
+
+When the GitHub Release is published, CI builds `io.github.snowjademusic.CosmicAppletSpotify.flatpak` and attaches it to that release.
+
+To ensure the publish event can trigger follow-up workflows, set a `RELEASE_PLZ_TOKEN` secret (PAT) and let release-plz use it instead of the default `GITHUB_TOKEN`.
 
 ## Screenshots
 

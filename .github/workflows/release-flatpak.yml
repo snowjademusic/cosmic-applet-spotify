@@ -1,0 +1,50 @@
+name: Release Flatpak Asset
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  build-and-attach-flatpak:
+    name: Build and attach Flatpak bundle
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'snowjademusic' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+
+      - name: Add Flathub remote
+        run: |
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install Flatpak runtime and SDK
+        run: |
+          flatpak --user install -y flathub \
+            org.freedesktop.Platform//25.08 \
+            org.freedesktop.Sdk//25.08 \
+            org.freedesktop.Sdk.Extension.rust-stable//25.08
+
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --user --force-clean --install-deps-from=flathub build-dir io.github.snowjademusic.CosmicAppletSpotify.yml
+
+      - name: Bundle Flatpak
+        run: |
+          flatpak build-bundle build-dir io.github.snowjademusic.CosmicAppletSpotify.flatpak io.github.snowjademusic.CosmicAppletSpotify
+
+      - name: Attach Flatpak bundle to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: io.github.snowjademusic.CosmicAppletSpotify.flatpak
+          fail_on_unmatched_files: true
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
