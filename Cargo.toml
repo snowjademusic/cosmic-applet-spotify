@@ -6,6 +6,7 @@ license = "GPL-3.0-or-later"
 readme = "README.md"
 repository = "https://github.com/snowjademusic/cosmic-applet-spotify"
 homepage = "https://github.com/snowjademusic/cosmic-applet-spotify"
+exclude = [".cargo/*", "vendor/*"]
 
 [dependencies]
 libcosmic = { git = "https://github.com/pop-os/libcosmic", features = ["applet", "tokio"] }
