@@ -10,6 +10,19 @@ Download the `.flatpak` asset from the latest GitHub release and install it:
 flatpak install --user --bundle io.github.snowjademusic.CosmicAppletSpotify.flatpak
 ```
 
+
+## Screenshots
+
+
+![Panel with Settings](docs/screenshots/panel-with-settings.png)
+
+![Panel](docs/screenshots/panel.png)
+
+## License
+
+GNU GPL v3.0 or later. See `LICENSE`.
+
+
 ## Releases
 
 This repository uses Conventional Commits together with release-plz.
@@ -30,14 +43,3 @@ After that merge, release-plz automatically:
 When the GitHub Release is published, CI builds `io.github.snowjademusic.CosmicAppletSpotify.flatpak` and attaches it to that release.
 
 To ensure the publish event can trigger follow-up workflows, set a `RELEASE_PLZ_TOKEN` secret (PAT) and let release-plz use it instead of the default `GITHUB_TOKEN`.
-
-## Screenshots
-
-
-![Panel with Settings](docs/screenshots/panel-with-settings.png)
-
-![Panel](docs/screenshots/panel.png)
-
-## License
-
-GNU GPL v3.0 or later. See `LICENSE`.
