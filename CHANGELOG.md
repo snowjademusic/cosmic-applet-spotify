@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0](https://github.com/snowjademusic/cosmic-applet-spotify/releases/tag/v1.1.0) - 2026-04-22
+
+### Added
+
+- *(display)* change how content is displayed if metadata is missing
+- allow other sources, not just Spotify
+- flatpak added directly to repo for download (:
+- show everything in panel and create toggles
+- [**breaking**] First Release candidate (:
+- vibe coded main.rs
+
+### Fixed
+
+- *(release-plz)* hopefully fix releases?
+- *(release-plz)* change and test release-plz
+- *(test-releasel-plz)* want to test if release-plz works
+- *(thumbnail)* revise thumbnail logic
+- also load if art is none
+- flatpak now should allow art
+- flatpak should now support fetching artwork
+- hide app from launcher and app tray
+- change icon logic and look
+
+### Other
+
+- *(release-plz)* fix hopefully
+- *(release-plz)* automatic releases
+- release v0.1.0
+- oooo
+- *(release-plz)* omgggg
+- *(release:plz)* yet another fix
+- *(release-plz)* another try to fix it
+- *(release-plz)* more changes to release-plz
+- *(release-plz)* remove dependency on vendor
+- getting it github ready
+- get project ready for flatpak/ flathub
+- more gitignore stuff
+- gitignore fix
+- do it with cargo-vendor
+- flatpak yml build phase changes
+- add yml for flatpak builds
+
 ## [0.1.0](https://github.com/snowjademusic/cosmic-applet-spotify/releases/tag/v0.1.0) - 2026-04-15
 
 ### Added
