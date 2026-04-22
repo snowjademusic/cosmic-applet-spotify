@@ -417,6 +417,10 @@ async fn resolve_thumbnail_url_from_media_url(media_url: &str) -> Option<String>
     let host = parsed.host_str()?.to_ascii_lowercase();
 
     if host.contains("youtube.com") || host.contains("youtu.be") {
+        // Try direct thumbnail first, then fallback to oEmbed
+        if let Some(url) = extract_youtube_thumbnail(media_url).await {
+            return Some(url);
+        }
         return fetch_oembed_thumbnail("https://www.youtube.com/oembed", media_url).await;
     }
 
@@ -427,21 +431,73 @@ async fn resolve_thumbnail_url_from_media_url(media_url: &str) -> Option<String>
     None
 }
 
+async fn extract_youtube_thumbnail(media_url: &str) -> Option<String> {
+    // Extract video ID from YouTube URL
+    let parsed = reqwest::Url::parse(media_url).ok()?;
+    let video_id = if let Some(query_str) = parsed.query() {
+        // Handle youtu.be short links (v parameter) or youtube.com with query
+        query_str
+            .split('&')
+            .find(|s| s.starts_with("v="))
+            .and_then(|s| s.strip_prefix("v="))
+            .map(str::to_string)
+    } else {
+        // Try to extract from path for youtu.be links
+        let path = parsed.path().trim_start_matches('/');
+        if !path.is_empty() && path.len() < 50 {
+            Some(path.to_string())
+        } else {
+            None
+        }
+    }?;
+
+    // Clean up video ID (remove any fragments or extra params)
+    let video_id = video_id.split('&').next().unwrap_or(&video_id).to_string();
+
+    // Return direct thumbnail URL; maxresdefault is most common, fallbacks handled by fetch_album_art
+    Some(format!(
+        "https://img.youtube.com/vi/{}/maxresdefault.jpg",
+        video_id
+    ))
+}
+
 async fn fetch_oembed_thumbnail(endpoint: &str, media_url: &str) -> Option<String> {
     let url = reqwest::Url::parse_with_params(endpoint, &[("url", media_url), ("format", "json")])
         .ok()?;
 
-    let response = reqwest::get(url).await.ok()?;
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        )
+        .send()
+        .await
+        .ok()?;
+
     let payload: serde_json::Value = response.json().await.ok()?;
 
+    // Try multiple possible field names
     payload
         .get("thumbnail_url")
+        .or_else(|| payload.get("thumbnail"))
+        .or_else(|| payload.get("image"))
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
 }
 
 async fn fetch_album_art(url: String) -> Option<Vec<u8>> {
-    let response = reqwest::get(&url).await.ok()?;
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        )
+        .send()
+        .await
+        .ok()?;
     let bytes = response.bytes().await.ok()?;
     Some(bytes.to_vec())
 }
