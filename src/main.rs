@@ -23,6 +23,8 @@ struct PanelVisibility {
     show_artwork: bool,
 }
 
+// comment
+
 impl Default for PanelVisibility {
     fn default() -> Self {
         Self {

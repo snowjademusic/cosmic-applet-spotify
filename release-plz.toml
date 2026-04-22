@@ -1,2 +1,5 @@
 [workspace]
 release_commits = '^(feat|fix|perf)(\(.+\))?(!)?:'
+publish = false
+git_only = true
+release_always = false
