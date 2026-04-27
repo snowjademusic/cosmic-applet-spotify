@@ -23,7 +23,7 @@ struct PanelVisibility {
     show_artwork: bool,
 }
 
-// comment to trigger release
+// comment to trigger release again
 
 impl Default for PanelVisibility {
     fn default() -> Self {

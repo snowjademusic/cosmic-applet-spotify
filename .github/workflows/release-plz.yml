@@ -23,6 +23,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Validate Cargo source config for CI
+        run: |
+          if [[ -f .cargo/config.toml ]] && grep -Eq 'replace-with|vendored-sources|directory\s*=\s*"vendor"|source\.crates-io' .cargo/config.toml; then
+            echo "Repository .cargo/config.toml configures vendored source replacement."
+            echo "release-plz uses temporary worktrees where ./vendor is not present, so this breaks cargo package."
+            echo "Keep repository .cargo/config.toml CI-safe (empty/default) and put local vendor config in user-level CARGO_HOME config instead."
+            exit 1
+          fi
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -51,6 +60,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Validate Cargo source config for CI
+        run: |
+          if [[ -f .cargo/config.toml ]] && grep -Eq 'replace-with|vendored-sources|directory\s*=\s*"vendor"|source\.crates-io' .cargo/config.toml; then
+            echo "Repository .cargo/config.toml configures vendored source replacement."
+            echo "release-plz uses temporary worktrees where ./vendor is not present, so this breaks cargo package."
+            echo "Keep repository .cargo/config.toml CI-safe (empty/default) and put local vendor config in user-level CARGO_HOME config instead."
+            exit 1
+          fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
