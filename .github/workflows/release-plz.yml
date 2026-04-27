@@ -35,11 +35,20 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Prepare clean Cargo home
+        run: |
+          mkdir -p "${RUNNER_TEMP}/cargo-home"
+          cat > "${RUNNER_TEMP}/cargo-home/config.toml" <<'EOF'
+          [net]
+          git-fetch-with-cli = true
+          EOF
+
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
           command: release-pr
         env:
+          CARGO_HOME: ${{ runner.temp }}/cargo-home
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN != '' && secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
 
   release-plz-release:
@@ -73,9 +82,18 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Prepare clean Cargo home
+        run: |
+          mkdir -p "${RUNNER_TEMP}/cargo-home"
+          cat > "${RUNNER_TEMP}/cargo-home/config.toml" <<'EOF'
+          [net]
+          git-fetch-with-cli = true
+          EOF
+
       - name: Run release-plz release
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
+          CARGO_HOME: ${{ runner.temp }}/cargo-home
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN != '' && secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
