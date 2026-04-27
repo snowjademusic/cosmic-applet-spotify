@@ -35,20 +35,21 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Prepare clean Cargo home
+      - name: Force clean Cargo home for this job
         run: |
-          mkdir -p "${RUNNER_TEMP}/cargo-home"
-          cat > "${RUNNER_TEMP}/cargo-home/config.toml" <<'EOF'
+          CLEAN_CARGO_HOME="${RUNNER_TEMP}/cargo-home"
+          mkdir -p "${CLEAN_CARGO_HOME}"
+          cat > "${CLEAN_CARGO_HOME}/config.toml" <<'EOF'
           [net]
           git-fetch-with-cli = true
           EOF
+          echo "CARGO_HOME=${CLEAN_CARGO_HOME}" >> "${GITHUB_ENV}"
 
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
           command: release-pr
         env:
-          CARGO_HOME: ${{ runner.temp }}/cargo-home
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN != '' && secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
 
   release-plz-release:
@@ -82,18 +83,19 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Prepare clean Cargo home
+      - name: Force clean Cargo home for this job
         run: |
-          mkdir -p "${RUNNER_TEMP}/cargo-home"
-          cat > "${RUNNER_TEMP}/cargo-home/config.toml" <<'EOF'
+          CLEAN_CARGO_HOME="${RUNNER_TEMP}/cargo-home"
+          mkdir -p "${CLEAN_CARGO_HOME}"
+          cat > "${CLEAN_CARGO_HOME}/config.toml" <<'EOF'
           [net]
           git-fetch-with-cli = true
           EOF
+          echo "CARGO_HOME=${CLEAN_CARGO_HOME}" >> "${GITHUB_ENV}"
 
       - name: Run release-plz release
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
-          CARGO_HOME: ${{ runner.temp }}/cargo-home
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN != '' && secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}

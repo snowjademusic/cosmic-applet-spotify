@@ -4,3 +4,4 @@ publish = false
 git_only = true
 release_always = false
 git_tag_name = "{{ version }}"
+pr_branch_prefix = "release-plz-v2-"
